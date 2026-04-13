@@ -3,7 +3,7 @@ import requests
 from functools import lru_cache
 
 # Offloading to HuggingFace Free API - 0MB RAM usage!
-API_URL = "https://router.huggingface.co/hf-inference/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 def _get_headers():
     # We will set this in the Render dashboard in Step 3
     api_key = os.environ.get("HUGGINGFACE_API_KEY")
