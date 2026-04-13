@@ -73,7 +73,6 @@ class HybridRetriever:
         return all_hits[:top_k]
 
     def retrieve_fast(self, query: str, doc_ids: list[str], top_k: int = 5) -> list[dict]:
-        # Semantic + BM25 + RRF — no reranker
         semantic_hits = self.vectorstore.semantic_search(query, doc_ids, top_k=8)
         semantic_normalized = [
             {
@@ -90,13 +89,20 @@ class HybridRetriever:
         fused = reciprocal_rank_fusion([semantic_normalized, bm25_hits])
 
         page_map = {h["chunk_id"]: h["page"] for h in semantic_normalized}
+        
+        # Deduplicate by text content
+        seen_texts = set()
+        deduped = []
         for item in fused:
-            if item.get("page", 1) == 1:
-                item["page"] = page_map.get(item["chunk_id"], 1)
-            item["rerank_score"] = item.get("score", 0)
-            item["final_score"] = item["rerank_score"]
+            text_key = item["text"][:100]
+            if text_key not in seen_texts:
+                seen_texts.add(text_key)
+                item["page"] = page_map.get(item["chunk_id"], item.get("page", 1))
+                item["rerank_score"] = item.get("score", 0)
+                item["final_score"] = item["rerank_score"]
+                deduped.append(item)
 
-        return fused[:top_k]
+        return deduped[:top_k]
 
     def retrieve_balanced(self, query: str, doc_ids: list[str], top_k: int = 5) -> list[dict]:
         # More candidates than fast, still no reranker
