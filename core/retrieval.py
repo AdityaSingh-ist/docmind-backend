@@ -6,9 +6,13 @@ from core.vectorstore import VectorStore
 _reranker = None
 
 
-def get_reranker() -> CrossEncoder:
+# REMOVE this top-level import:
+# from sentence_transformers import CrossEncoder
+
+def get_reranker() -> "CrossEncoder":
     global _reranker
     if _reranker is None:
+        from sentence_transformers import CrossEncoder  # 👈 lazy import
         print("[NEXUS] Loading reranker...")
         _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         print("[NEXUS] Reranker ready.")
