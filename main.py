@@ -34,10 +34,6 @@ app.add_middleware(
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-vectorstore = VectorStore()
-retriever = HybridRetriever(vectorstore)
-doc_registry: dict[str, dict] = {}
-
 
 def rebuild_state_from_vectorstore():
     """Rebuild BM25 indices and doc_registry from persisted ChromaDB on startup."""
@@ -69,7 +65,18 @@ def rebuild_state_from_vectorstore():
     print(f"[NEXUS] State rebuilt. {len(doc_registry)} docs ready.")
 
 
-rebuild_state_from_vectorstore()
+try:
+    vectorstore = VectorStore()
+    retriever = HybridRetriever(vectorstore)
+    doc_registry: dict[str, dict] = {}
+    rebuild_state_from_vectorstore()
+    print("[NEXUS] Startup complete.")
+except Exception as e:
+    print(f"[NEXUS] Startup error: {e}")
+    # Still define these so the app doesn't crash on import
+    vectorstore = None
+    retriever = None
+    doc_registry = {}
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
