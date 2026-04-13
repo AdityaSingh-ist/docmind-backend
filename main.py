@@ -24,7 +24,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://docmind-frontend-flame.vercel.app"
+        "https://docmind-frontend-flame.vercel.app",
+        "https://docmind-frontend-iota.vercel.app",  # 👈 add this
     ],
     allow_credentials=True,
     allow_methods=["*"],
