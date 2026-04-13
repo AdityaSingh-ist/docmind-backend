@@ -1,16 +1,10 @@
 services:
   - type: web
-    name: docmind-backend
+    name: nexus-backend
     runtime: python
-    pythonVersion: "3.11.9"
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port 10000"
     envVars:
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: PINECONE_API_KEY
-        sync: false
-      - key: PINECONE_INDEX
-        value: docmind-vectors
+      - key: PYTHON_VERSION
+        value: 3.11.9
