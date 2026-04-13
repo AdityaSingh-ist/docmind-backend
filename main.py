@@ -47,6 +47,10 @@ except Exception as e:
 
 
 def rebuild_state_from_vectorstore():
+    if not vectorstore or not retriever:
+        print("[NEXUS] Skipping rebuild — vectorstore not available.")
+        return
+
     grouped = vectorstore.get_all_documents()
     if not grouped:
         return
@@ -75,8 +79,7 @@ def rebuild_state_from_vectorstore():
     print(f"[NEXUS] State rebuilt. {len(doc_registry)} docs ready.")
 
 
-if vectorstore:
-    rebuild_state_from_vectorstore()
+rebuild_state_from_vectorstore()
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
