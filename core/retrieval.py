@@ -72,8 +72,34 @@ class HybridRetriever:
         all_hits.sort(key=lambda x: x["score"], reverse=True)
         return all_hits[:top_k]
 
-    def retrieve(self, query: str, doc_ids: list[str], top_k: int = 6) -> list[dict]:
-        # Stage 1 — semantic search
+    def retrieve_fast(self, query: str, doc_ids: list[str], top_k: int = 5) -> list[dict]:
+        # Semantic + BM25 + RRF — no reranker
+        semantic_hits = self.vectorstore.semantic_search(query, doc_ids, top_k=8)
+        semantic_normalized = [
+            {
+                "chunk_id": h["chunk_id"],
+                "text": h["text"],
+                "doc_id": h["metadata"]["doc_id"],
+                "page": h["metadata"]["page"],
+                "score": h["score"],
+            }
+            for h in semantic_hits
+        ]
+
+        bm25_hits = self.bm25_search(query, doc_ids, top_k=8)
+        fused = reciprocal_rank_fusion([semantic_normalized, bm25_hits])
+
+        page_map = {h["chunk_id"]: h["page"] for h in semantic_normalized}
+        for item in fused:
+            if item.get("page", 1) == 1:
+                item["page"] = page_map.get(item["chunk_id"], 1)
+            item["rerank_score"] = item.get("score", 0)
+            item["final_score"] = item["rerank_score"]
+
+        return fused[:top_k]
+
+    def retrieve_balanced(self, query: str, doc_ids: list[str], top_k: int = 5) -> list[dict]:
+        # More candidates than fast, still no reranker
         semantic_hits = self.vectorstore.semantic_search(query, doc_ids, top_k=10)
         semantic_normalized = [
             {
@@ -86,20 +112,40 @@ class HybridRetriever:
             for h in semantic_hits
         ]
 
-        # Stage 2 — BM25 search
         bm25_hits = self.bm25_search(query, doc_ids, top_k=10)
+        fused = reciprocal_rank_fusion([semantic_normalized, bm25_hits])
 
-        # Build page map for enriching BM25 results
         page_map = {h["chunk_id"]: h["page"] for h in semantic_normalized}
+        for item in fused:
+            if item.get("page", 1) == 1:
+                item["page"] = page_map.get(item["chunk_id"], 1)
+            item["rerank_score"] = item.get("score", 0)
+            item["final_score"] = item["rerank_score"]
 
-        # Stage 3 — RRF fusion
+        return fused[:top_k]
+
+    def retrieve(self, query: str, doc_ids: list[str], top_k: int = 6) -> list[dict]:
+        # Full pipeline with optional reranker
+        semantic_hits = self.vectorstore.semantic_search(query, doc_ids, top_k=10)
+        semantic_normalized = [
+            {
+                "chunk_id": h["chunk_id"],
+                "text": h["text"],
+                "doc_id": h["metadata"]["doc_id"],
+                "page": h["metadata"]["page"],
+                "score": h["score"],
+            }
+            for h in semantic_hits
+        ]
+
+        bm25_hits = self.bm25_search(query, doc_ids, top_k=10)
+        page_map = {h["chunk_id"]: h["page"] for h in semantic_normalized}
         fused = reciprocal_rank_fusion([semantic_normalized, bm25_hits])
 
         for item in fused:
             if item.get("page", 1) == 1:
                 item["page"] = page_map.get(item["chunk_id"], 1)
 
-        # Stage 4 — Cross-encoder reranking (lazy, None-safe)
         if len(fused) > 1:
             try:
                 reranker = get_reranker()
@@ -121,18 +167,3 @@ class HybridRetriever:
                     item["final_score"] = item["rerank_score"]
 
         return fused[:top_k]
-
-    def retrieve_fast(self, query: str, doc_ids: list[str], top_k: int = 4) -> list[dict]:
-        hits = self.vectorstore.semantic_search(query, doc_ids, top_k=top_k)
-        return [
-            {
-                "chunk_id": h["chunk_id"],
-                "text": h["text"],
-                "doc_id": h["metadata"]["doc_id"],
-                "page": h["metadata"]["page"],
-                "score": h["score"],
-                "rerank_score": h["score"],
-                "final_score": h["score"],
-            }
-            for h in hits
-        ]

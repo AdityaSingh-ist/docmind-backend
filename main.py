@@ -23,8 +23,8 @@ app = FastAPI(title="NEXUS API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Your local frontend
-        "https://docmind-frontend-flame.vercel.app" # Your deployed Vercel frontend
+        "http://localhost:5173",
+        "https://docmind-frontend-flame.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -38,23 +38,20 @@ try:
     vectorstore = VectorStore()
     retriever = HybridRetriever(vectorstore)
     doc_registry: dict[str, dict] = {}
-    rebuild_state_from_vectorstore()
     print("[NEXUS] Startup complete.")
 except Exception as e:
     print(f"[NEXUS] Startup error: {e}")
-    # Still define these so the app doesn't crash on import
     vectorstore = None
     retriever = None
     doc_registry = {}
 
 
 def rebuild_state_from_vectorstore():
-    """Rebuild BM25 indices and doc_registry from persisted ChromaDB on startup."""
     grouped = vectorstore.get_all_documents()
     if not grouped:
         return
 
-    print(f"[NEXUS] Rebuilding state for {len(grouped)} documents from ChromaDB...")
+    print(f"[NEXUS] Rebuilding state for {len(grouped)} documents from Pinecone...")
 
     for doc_id, chunks in grouped.items():
         texts = [c["text"] for c in chunks]
@@ -78,19 +75,18 @@ def rebuild_state_from_vectorstore():
     print(f"[NEXUS] State rebuilt. {len(doc_registry)} docs ready.")
 
 
-rebuild_state_from_vectorstore()
+if vectorstore:
+    rebuild_state_from_vectorstore()
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
-
-from pydantic import BaseModel
 
 class QueryRequest(BaseModel):
     query: str
     doc_ids: list[str] | None = None
     llm_provider: str = "groq"
     conversation_history: list = []
-    mode: str = "fast"   # 👈 properly indented
+    mode: str = "fast"
 
 
 class BenchmarkRequest(BaseModel):
@@ -105,7 +101,7 @@ def health():
     return {
         "status": "ok",
         "docs_indexed": len(doc_registry),
-        "chunks_in_store": vectorstore.get_chunk_count(),
+        "chunks_in_store": vectorstore.get_chunk_count() if vectorstore else 0,
     }
 
 
@@ -167,14 +163,12 @@ async def query_documents(req: QueryRequest):
         raise HTTPException(400, "No documents indexed. Upload documents first.")
 
     target_ids = req.doc_ids if req.doc_ids else list(doc_registry.keys())
-    mode = req.mode if hasattr(req, "mode") else "fast"
+    mode = req.mode
 
     if mode == "fast":
-        retrieved_chunks = retriever.retrieve_fast(req.query, target_ids, top_k=4)
-
+        retrieved_chunks = retriever.retrieve_fast(req.query, target_ids, top_k=5)
     elif mode == "balanced":
-        retrieved_chunks = retriever.retrieve(req.query, target_ids, top_k=5)
-
+        retrieved_chunks = retriever.retrieve_balanced(req.query, target_ids, top_k=5)
     else:
         retrieved_chunks = retriever.retrieve(req.query, target_ids, top_k=6)
 
@@ -219,13 +213,11 @@ async def benchmark(req: BenchmarkRequest):
 
     target_ids = req.doc_ids if req.doc_ids else list(doc_registry.keys())
 
-    try:
-        results = await run_benchmark(
-            retriever=retriever,
-            doc_ids=target_ids,
-            doc_registry=doc_registry,
-            llm_provider=req.llm_provider,
-        )
-        return results
-    except Exception as e:
-        raise HTTPException(500, f"Benchmark failed: {str(e)}")
+    result = await run_benchmark(
+        retriever=retriever,
+        doc_ids=target_ids,
+        doc_registry=doc_registry,
+        llm_provider=req.llm_provider,
+    )
+
+    return result
