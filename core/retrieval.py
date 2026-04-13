@@ -1,21 +1,21 @@
 import math
 from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder
 from core.vectorstore import VectorStore
 
 _reranker = None
 
 
-# REMOVE this top-level import:
-# from sentence_transformers import CrossEncoder
-
-def get_reranker() -> "CrossEncoder":
+def get_reranker():
     global _reranker
     if _reranker is None:
-        from sentence_transformers import CrossEncoder  # 👈 lazy import
-        print("[NEXUS] Loading reranker...")
-        _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        print("[NEXUS] Reranker ready.")
+        try:
+            from sentence_transformers import CrossEncoder
+            print("[NEXUS] Loading reranker...")
+            _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+            print("[NEXUS] Reranker ready.")
+        except Exception as e:
+            print(f"[NEXUS] Reranker unavailable: {e}")
+            return None
     return _reranker
 
 
@@ -99,16 +99,21 @@ class HybridRetriever:
             if item.get("page", 1) == 1:
                 item["page"] = page_map.get(item["chunk_id"], 1)
 
-        # Stage 4 — Cross-encoder reranking
+        # Stage 4 — Cross-encoder reranking (lazy, None-safe)
         if len(fused) > 1:
             try:
                 reranker = get_reranker()
-                pairs = [[query, item["text"]] for item in fused]
-                raw_scores = reranker.predict(pairs)
-                for i, item in enumerate(fused):
-                    item["rerank_score"] = round(sigmoid(float(raw_scores[i])), 4)
-                    item["final_score"] = item["rerank_score"]
-                fused.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+                if reranker is not None:
+                    pairs = [[query, item["text"]] for item in fused]
+                    raw_scores = reranker.predict(pairs)
+                    for i, item in enumerate(fused):
+                        item["rerank_score"] = round(sigmoid(float(raw_scores[i])), 4)
+                        item["final_score"] = item["rerank_score"]
+                    fused.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+                else:
+                    for item in fused:
+                        item["rerank_score"] = item.get("score", 0)
+                        item["final_score"] = item["rerank_score"]
             except Exception as e:
                 print(f"[NEXUS] Reranker fallback: {e}")
                 for item in fused:
