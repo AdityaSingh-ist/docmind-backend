@@ -22,7 +22,10 @@ app = FastAPI(title="NEXUS API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",  # Your local frontend
+        "https://docmind-frontend-flame.vercel.app" # Your deployed Vercel frontend
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
